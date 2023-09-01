@@ -8,6 +8,7 @@ Email: gpollayil@gmail.com, mathewjosepollayil@gmail.com, stefano.angeli@ing.uni
 #include "abb_wrapper_control/TaskSequencer.h"
 #include <std_msgs/UInt8.h>
 
+
 TaskSequencer::TaskSequencer(ros::NodeHandle& nh_){
     
     // Initializing Node Handle
@@ -174,7 +175,33 @@ bool TaskSequencer::call_template_task(std_srvs::SetBool::Request &req, std_srvs
 
     /*Compose the high level task by using the PlanAndExecutePose, PlanAndExecuteJoint
     and PlanAndExecuteSlerp functions*/
+           // Test primitive n.1: move the gripper to a posa
+    geometry_msgs::Pose goal_pose;
+    // geometry_msgs::PoseStamped dice_pose;
 
+    auto dice_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/dice_pose",  ros::Duration(5.0));
+
+    goal_pose.position.x = dice_pose->pose.position.x;
+    goal_pose.position.y = dice_pose->pose.position.y;
+    goal_pose.position.z = dice_pose->pose.position.z - 0.05;
+
+    goal_pose.orientation.w = dice_pose->pose.orientation.w;
+    goal_pose.orientation.x = dice_pose->pose.orientation.x;
+    goal_pose.orientation.y = dice_pose->pose.orientation.y;
+    goal_pose.orientation.z = dice_pose->pose.orientation.z;
+
+
+
+
+    bool is_relative = false;
+
+    bool success = this->PlanAndExecutePose(goal_pose, is_relative);
+    if(success){
+        ROS_INFO_STREAM("Call Example Task completed correctly");
+    } else {
+        ROS_INFO_STREAM("Failed to completed the service");
+
+    }
 
 
 
