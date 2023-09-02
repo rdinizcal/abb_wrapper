@@ -8,6 +8,10 @@ Email: gpollayil@gmail.com, mathewjosepollayil@gmail.com, stefano.angeli@ing.uni
 #include "abb_wrapper_control/TaskSequencer.h"
 #include <std_msgs/UInt8.h>
 
+#include "primitives/OpenGripper.h"
+#include "primitives/CloseGripper.h"
+#include "primitives/PlanAndExecutePose.h"
+#include "primitives/PlanAndExecuteSlerp.h"
 
 TaskSequencer::TaskSequencer(ros::NodeHandle& nh_){
     
@@ -114,8 +118,8 @@ bool TaskSequencer::parse_task_params(){
 }
 
 bool TaskSequencer::call_example_task(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res){
-    
-    // Checking the request for correctness
+
+    // Checks the request for correctness
     if(!req.data){
         ROS_WARN("Did you really want to call the simple grasp task service with data = false?");
         res.success = true;
@@ -123,6 +127,7 @@ bool TaskSequencer::call_example_task(std_srvs::SetBool::Request &req, std_srvs:
         return true;
     }
 
+    // Defines poses and transformations
     Eigen::Affine3d grasp_transform_aff; tf::poseMsgToEigen(this->grasp_T, grasp_transform_aff);
     Eigen::Affine3d pre_grasp_transform_aff; tf::poseMsgToEigen(this->pre_grasp_T, pre_grasp_transform_aff);
 
@@ -130,33 +135,43 @@ bool TaskSequencer::call_example_task(std_srvs::SetBool::Request &req, std_srvs:
     tf::poseEigenToMsg(grasp_transform_aff * pre_grasp_transform_aff, pre_grasp_pose);
     tf::poseEigenToMsg(grasp_transform_aff, grasp_pose);
     
+    // Primitives Setup
+    open_gripper = OpenGripper(this->abb_client);
+    close_gripper = CloseGripper(this->abb_client);
+    plan_and_execute_pose = PlanAndExecutePose(this->abb_client, this->tmp_traj_arm,this->waiting_time);
+    plan_and_execute_slerp = PlanAndExecuteSlerp(this->abb_client, this->tmp_traj_arm,this->waiting_time);
+
     // Open the gripper
-    
-    this->OpenGripper(true);
+    //this->OpenGripper(true);
+    open_gripper();
 
     // Plan and go to Pre Grasp Pose 
-    this->PlanAndExecutePose(pre_grasp_pose, false);
+    //this->PlanAndExecutePose(pre_grasp_pose, false);
+    plan_and_execute_pose(pre_grasp_pose, false);
+
 
     // Plan and go to Grasp Pose
-    this->PlanAndExecuteSlerp(grasp_pose, false);
+    //this->PlanAndExecuteSlerp(grasp_pose, false);
+    plan_and_execute_slerp(grasp_pose, false);
 
     // Close the gripper
-
-    this->CloseGripper(true);
+    //this->CloseGripper(true);
+    close_gripper();
     sleep(0.2);
 
     // Plan and go to Pre Grasp Pose
-
-    this->PlanAndExecuteSlerp(pre_grasp_pose, false);
+    //this->PlanAndExecuteSlerp(pre_grasp_pose, false);
+    plan_and_execute_slerp(pre_grasp_pose, false);
 
     // Plan and go to Joint Position A
 
-    this->PlanAndExecuteJoint(joint_pos_A, true);
+    //this->PlanAndExecuteJoint(joint_pos_A, true);
 
     // Now, everything finished well
     res.success = true;
     res.message = "The service call_example_task was correctly performed!";
-    return true;   
+    return true;  
+
 }
 
 // Callback for template task service
@@ -288,71 +303,6 @@ bool TaskSequencer::PlanAndExecuteJoint(std::vector<double>& joint_goal, bool fl
         set_bool_srv.response.message = "The service call_arm_wait_service was NOT performed correctly! Error wait in arm control.";
         return false;
     }
-    return set_bool_srv.response.success = true;
-}
-
-bool TaskSequencer::PlanAndExecuteSlerp(geometry_msgs::Pose& pose, bool is_relative){
-
-    std_srvs::SetBool set_bool_srv;
-
-    // Setting zero pose as starting from present
-
-    geometry_msgs::Pose present_pose = geometry_msgs::Pose();
-    present_pose.position.x = 0.0; present_pose.position.y = 0.0; present_pose.position.z = 0.0;
-    present_pose.orientation.x = 0.0; present_pose.orientation.y = 0.0; present_pose.orientation.z = 0.0; present_pose.orientation.w = 1.0;
-
-    /* PLAN 1: Plan to POSE */
-
-    if(!this->abb_client.call_slerp_service(pose, present_pose, is_relative, this->tmp_traj_arm, this->tmp_traj_arm)){
-        ROS_ERROR("Could not plan to the specified pose.");
-        set_bool_srv.response.success = false;
-        set_bool_srv.response.message = "The service call_slerp_service was NOT performed correctly!";
-        return false;
-    }  
-
-    /* EXEC 1: Going to POSE*/
-
-    if(!this->abb_client.call_arm_control_service(this->tmp_traj_arm)){
-        ROS_ERROR("Could not go to pose.");
-        set_bool_srv.response.success = false;
-        set_bool_srv.response.message = "The service call_arm_control_service was NOT performed correctly! Error in arm control.";
-        return false;
-    }
-
-    /* WAIT 1: Wait to finish the task*/
-
-    if(!this->abb_client.call_arm_wait_service(this->waiting_time)){ // WAITING FOR END EXEC
-        ROS_ERROR("TIMEOUT!!! EXEC TOOK TOO MUCH TIME for going to Pre Grasp Pose");
-        set_bool_srv.response.success = false;
-        set_bool_srv.response.message = "The service call_arm_wait_service was NOT performed correctly! Error wait in arm control.";
-        return false;
-    }
-    return set_bool_srv.response.success = true;
-}
-
-bool TaskSequencer::CloseGripper(bool close){
-    
-    std_srvs::SetBool set_bool_srv;
-
-    if(!this->abb_client.call_closing_gripper(close)){
-        ROS_ERROR("Could not close the gripper.");
-        set_bool_srv.response.success = false;
-        set_bool_srv.response.message = "The service call_closing_gripper was NOT performed correctly!";
-        return false;
-    }  
-    return set_bool_srv.response.success = true;
-}
-
-bool TaskSequencer::OpenGripper(bool open){
-
-    std_srvs::SetBool set_bool_srv;
-
-    if(!this->abb_client.call_opening_gripper(open)){
-        ROS_ERROR("Could not open the gripper.");
-        set_bool_srv.response.success = false;
-        set_bool_srv.response.message = "The service call_opening_gripper was NOT performed correctly!";
-        return false;
-    }  
     return set_bool_srv.response.success = true;
 }
 
