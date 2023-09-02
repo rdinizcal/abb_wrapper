@@ -13,6 +13,9 @@ Email: gpollayil@gmail.com, mathewjosepollayil@gmail.com, stefano.angeli@ing.uni
 #include "primitives/PlanAndExecutePose.h"
 #include "primitives/PlanAndExecuteSlerp.h"
 
+#include "skills/GraspSkill.h"
+#include "skills/MoveToPoseSkill.h"
+
 TaskSequencer::TaskSequencer(ros::NodeHandle& nh_){
     
     // Initializing Node Handle
@@ -135,37 +138,13 @@ bool TaskSequencer::call_example_task(std_srvs::SetBool::Request &req, std_srvs:
     tf::poseEigenToMsg(grasp_transform_aff * pre_grasp_transform_aff, pre_grasp_pose);
     tf::poseEigenToMsg(grasp_transform_aff, grasp_pose);
     
-    // Primitives Setup
-    open_gripper = OpenGripper(this->abb_client);
-    close_gripper = CloseGripper(this->abb_client);
-    plan_and_execute_pose = PlanAndExecutePose(this->abb_client, this->tmp_traj_arm,this->waiting_time);
-    plan_and_execute_slerp = PlanAndExecuteSlerp(this->abb_client, this->tmp_traj_arm,this->waiting_time);
+    // Skills Setup
+    move_to = MoveToPoseSkill(this->abb_client, this->tmp_traj_arm,this->waiting_time);
+    grasp = GraspSkill(this->abb_client);
 
-    // Open the gripper
-    //this->OpenGripper(true);
-    open_gripper();
-
-    // Plan and go to Pre Grasp Pose 
-    //this->PlanAndExecutePose(pre_grasp_pose, false);
-    plan_and_execute_pose(pre_grasp_pose, false);
-
-
-    // Plan and go to Grasp Pose
-    //this->PlanAndExecuteSlerp(grasp_pose, false);
-    plan_and_execute_slerp(grasp_pose, false);
-
-    // Close the gripper
-    //this->CloseGripper(true);
-    close_gripper();
-    sleep(0.2);
-
-    // Plan and go to Pre Grasp Pose
-    //this->PlanAndExecuteSlerp(pre_grasp_pose, false);
-    plan_and_execute_slerp(pre_grasp_pose, false);
-
-    // Plan and go to Joint Position A
-
-    //this->PlanAndExecuteJoint(joint_pos_A, true);
+    // Pick Strategy
+    move_to(pre_grasp_pose, grasp_pose);
+    grasp();
 
     // Now, everything finished well
     res.success = true;

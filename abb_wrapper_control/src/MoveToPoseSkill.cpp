@@ -11,14 +11,16 @@ MoveToPoseSkill::MoveToPoseSkill(AbbClient abb_client, tmp_traj_arm, waiting_tim
     this->waiting_time = waiting_time;
 }
 
-std_srvs::SetBool MoveToPoseSkill::operator()(geometry_msgs::Pose& pose, bool is_relative){
+std_srvs::SetBool MoveToPoseSkill::operator()(geometry_msgs::Pose& pre_pose, geometry_msgs::Pose& exact_pose){
     std_srvs::SetBool resp;
     
     plan_and_execute_pose = PlanAndExecutePose(this->abb_client, this->tmp_traj_arm,this->waiting_time);
     
     try {
         this->check_precondition();
-        resp = plan_and_execute_pose();
+        resp = plan_and_execute_pose(pre_pose, false);
+        if (!resp.success){ throw false; }
+        resp = plan_and_execute_pose(exact_pose, false);
         this->check_postcondition();
         resp.success = true;
     } catch (...) {
